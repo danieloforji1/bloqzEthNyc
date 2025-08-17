@@ -304,6 +304,29 @@ export default function ChatScreen() {
       return;
     }
     try {
+      // First try to resolve as ENS domain
+      if (username.includes('.') && (username.endsWith('.eth') || username.endsWith('.crypto') || username.endsWith('.xyz'))) {
+        console.log(`🔍 Potential ENS domain detected: ${username}`);
+        try {
+          const ensResponse = await apiService.resolveENS(username);
+          if (ensResponse.success && ensResponse.data?.address) {
+            const ensSuggestion = {
+              type: 'ens',
+              name: username,
+              address: ensResponse.data.address,
+              domain: username,
+              source: 'ens'
+            };
+            setUsernameSuggestions([ensSuggestion]);
+            setShowSuggestions(true);
+            return;
+          }
+        } catch (ensError) {
+          console.log('ENS resolution failed, falling back to username lookup');
+        }
+      }
+
+      // Fallback to regular username lookup
       const response = await apiService.getUserByUsername(username);
       if (response.success && response.data) {
         const suggestions: any[] = [];
@@ -312,6 +335,9 @@ export default function ChatScreen() {
         }
         if (response.data.users && response.data.users.length > 0) {
           response.data.users.forEach((u: any) => suggestions.push({ ...u, type: 'user' }));
+        }
+        if (response.data.ensResults && response.data.ensResults.length > 0) {
+          response.data.ensResults.forEach((ens: any) => suggestions.push({ ...ens, type: 'ens' }));
         }
         setUsernameSuggestions(suggestions);
         setShowSuggestions(suggestions.length > 0);
@@ -327,9 +353,13 @@ export default function ChatScreen() {
 
   // Watch input for @username pattern for autocomplete
   useEffect(() => {
-    const match = input.match(/@([a-zA-Z0-9_]{2,})$/);
-    if (match) {
-      lookupUsernameSuggestions(match[1]);
+    const mentionMatch = input.match(/@([a-zA-Z0-9_]{2,})$/);
+    const ensMatch = input.match(/([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*\.(eth|crypto|xyz|app|dao|art|club|game|io|org|com|net))$/);
+    
+    if (mentionMatch) {
+      lookupUsernameSuggestions(mentionMatch[1]);
+    } else if (ensMatch) {
+      lookupUsernameSuggestions(ensMatch[1]);
     } else {
       setUsernameSuggestions([]);
       setShowSuggestions(false);
@@ -339,8 +369,16 @@ export default function ChatScreen() {
   // When a suggestion is tapped
   const handleSelectUsernameSuggestion = (suggestion: any) => {
     setShowSuggestions(false);
-    // Remove only the last @username from the input, keep the rest
-    setInput(prevInput => prevInput.replace(/@([a-zA-Z0-9_]{2,})$/, ''));
+    
+    // Remove the last @username or ENS domain from the input
+    if (suggestion.type === 'ens') {
+      // For ENS domains, remove the full domain
+      setInput(prevInput => prevInput.replace(new RegExp(`${suggestion.domain}$`), ''));
+    } else {
+      // For usernames, remove the @username pattern
+      setInput(prevInput => prevInput.replace(/@([a-zA-Z0-9_]{2,})$/, ''));
+    }
+    
     if (suggestion.type === 'contact') {
       setPendingUsernameRecipient({
         type: 'contact',
@@ -357,6 +395,15 @@ export default function ChatScreen() {
         profileImageUrl: suggestion.profileImageUrl,
         wallets: suggestion.wallets,
         selectedWallet: suggestion.wallets && suggestion.wallets[0],
+      });
+    } else if (suggestion.type === 'ens') {
+      setPendingUsernameRecipient({
+        type: 'ens',
+        name: suggestion.domain,
+        address: suggestion.address,
+        network: '1', // Default to Ethereum mainnet
+        domain: suggestion.domain,
+        source: 'ens'
       });
     }
   };
@@ -900,12 +947,20 @@ export default function ChatScreen() {
       const apiPayload: any = {
         sessionId: currentSessionId || undefined,
         message: input,
-        // No need to pass walletAddress - the API service will handle it automatically
+        walletAddress: currentWalletAddress, // Add wallet address to fix 0x API taker parameter issue
       };
       if (contactData) {
         apiPayload.contactData = contactData;
       } else if (recipientData && recipientData.type === 'user') {
         apiPayload.recipient = recipientData;
+      } else if (recipientData && recipientData.type === 'ens') {
+        // Handle ENS domain recipients
+        apiPayload.recipient = {
+          type: 'ens',
+          address: recipientData.address,
+          domain: (recipientData as any).domain,
+          network: recipientData.network || '1'
+        };
       }
       console.log('👍 apiPayload to sendChatMessage:', apiPayload);
       const response = await apiService.sendChatMessage(apiPayload);

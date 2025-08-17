@@ -1278,6 +1278,22 @@ class ApiService {
     });
   }
 
+  // Resolve ENS domain to address
+  async resolveENS(domain: string): Promise<ApiResponse<any>> {
+    return this.request({
+      method: 'GET',
+      url: `api/ens/resolve?domain=${encodeURIComponent(domain)}`,
+    });
+  }
+
+  // Smart resolve: handle ENS domains, addresses, and usernames
+  async smartResolve(input: string): Promise<ApiResponse<any>> {
+    return this.request({
+      method: 'GET',
+      url: `api/ens/smart-resolve?input=${encodeURIComponent(input)}`,
+    });
+  }
+
   async walletConnect(address: string, network?: string, walletType?: string): Promise<ApiResponse<{ token: string; user: User }>> {
     const response = await this.request<{ token: string; user: User }>({
       method: 'POST',
