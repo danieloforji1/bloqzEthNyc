@@ -305,18 +305,19 @@ export default function ChatScreen() {
     }
     try {
       // First try to resolve as ENS domain
-      if (username.includes('.') && (username.endsWith('.eth') || username.endsWith('.crypto') || username.endsWith('.xyz'))) {
+      if (username.includes('.') && (username.endsWith('.eth') || username.endsWith('.crypto') || username.endsWith('.xyz') || username.endsWith('.app') || username.endsWith('.dao') || username.endsWith('.art') || username.endsWith('.club') || username.endsWith('.game') || username.endsWith('.io') || username.endsWith('.org') || username.endsWith('.com') || username.endsWith('.net'))) {
         console.log(`🔍 Potential ENS domain detected: ${username}`);
         try {
           const ensResponse = await apiService.resolveENS(username);
           if (ensResponse.success && ensResponse.data?.address) {
             const ensSuggestion = {
               type: 'ens',
-              name: username,
+              name: ensResponse.data.address, // Use resolved address as name for consistency
               address: ensResponse.data.address,
-              domain: username,
+              domain: username, // Keep the original domain for display
               source: 'ens'
             };
+            console.log('✅ ENS suggestion created:', ensSuggestion);
             setUsernameSuggestions([ensSuggestion]);
             setShowSuggestions(true);
             return;
@@ -359,7 +360,7 @@ export default function ChatScreen() {
     if (mentionMatch) {
       lookupUsernameSuggestions(mentionMatch[1]);
     } else if (ensMatch) {
-      lookupUsernameSuggestions(ensMatch[1]);
+      lookupUsernameSuggestions(ensMatch[0]); // Pass the full matched domain, not just group 1
     } else {
       setUsernameSuggestions([]);
       setShowSuggestions(false);
@@ -397,14 +398,17 @@ export default function ChatScreen() {
         selectedWallet: suggestion.wallets && suggestion.wallets[0],
       });
     } else if (suggestion.type === 'ens') {
-      setPendingUsernameRecipient({
+      console.log('🔍 Creating ENS recipient from suggestion:', suggestion);
+      const ensRecipient = {
         type: 'ens',
-        name: suggestion.domain,
+        name: suggestion.domain, // Use domain as the display name
         address: suggestion.address,
         network: '1', // Default to Ethereum mainnet
         domain: suggestion.domain,
         source: 'ens'
-      });
+      };
+      console.log('✅ ENS recipient created:', ensRecipient);
+      setPendingUsernameRecipient(ensRecipient);
     }
   };
 
@@ -877,6 +881,34 @@ export default function ChatScreen() {
     // Prepare recipient/contactData for API and message
     let recipientData = null;
     let contactData = undefined;
+    
+    // Check if input contains an ENS domain that needs to be resolved
+    const ensMatch = input.match(/([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*\.(eth|crypto|xyz|app|dao|art|club|game|io|org|com|net))$/);
+    
+    if (ensMatch && !pendingUsernameRecipient) {
+      // Auto-resolve ENS domain if found in input
+      console.log('🔍 Auto-detected ENS domain in input:', ensMatch[0]);
+      try {
+        const ensResponse = await apiService.resolveENS(ensMatch[0]);
+        if (ensResponse.success && ensResponse.data?.address) {
+          console.log('✅ Auto-resolved ENS domain:', ensMatch[0], '->', ensResponse.data.address);
+          // Create ENS recipient data directly
+          recipientData = {
+            type: 'ens',
+            name: ensMatch[0], // Use domain as name for display
+            address: ensResponse.data.address,
+            network: '1', // Default to Ethereum mainnet
+          };
+          contactData = {
+            contacts: [recipientData],
+          };
+          console.log('✅ Created ENS contactData:', contactData);
+        }
+      } catch (ensError) {
+        console.log('❌ Auto-ENS resolution failed:', ensError);
+      }
+    }
+    
     if (pendingUsernameRecipient) {
       if (pendingUsernameRecipient.type === 'contact') {
         recipientData = {
@@ -894,6 +926,18 @@ export default function ChatScreen() {
           name: pendingUsernameRecipient.username,
           address: pendingUsernameRecipient.selectedWallet?.address,
           network: pendingUsernameRecipient.selectedWallet?.network,
+        };
+      } else if (pendingUsernameRecipient.type === 'ens') {
+        // Handle ENS domain recipients - send as contactData so backend processes them like contacts
+        const ensData = pendingUsernameRecipient as any; // Type assertion for ENS data
+        recipientData = {
+          type: 'ens',
+          name: ensData.domain,
+          address: ensData.address,
+          network: ensData.network,
+        };
+        contactData = {
+          contacts: [recipientData],
         };
       }
     }
@@ -944,22 +988,36 @@ export default function ChatScreen() {
       }
       
       // Send to backend, include contactData for contacts, recipient for users
+      const selectedWalletAddress = getWalletAddressForNetwork(contactData?.contacts?.[0]?.network || recipientData?.network);
+      console.log('🔍 Smart wallet selection:', {
+        network: contactData?.contacts?.[0]?.network || recipientData?.network,
+        selectedWallet: selectedWalletAddress,
+        contactNetwork: contactData?.contacts?.[0]?.network,
+        recipientNetwork: recipientData?.network
+      });
+      
+      console.log('🔍 Final recipient/contact data:', { recipientData, contactData });
+      
       const apiPayload: any = {
         sessionId: currentSessionId || undefined,
         message: input,
-        walletAddress: currentWalletAddress, // Add wallet address to fix 0x API taker parameter issue
+        walletAddress: selectedWalletAddress, // Smart wallet selection based on network
       };
       if (contactData) {
         apiPayload.contactData = contactData;
       } else if (recipientData && recipientData.type === 'user') {
         apiPayload.recipient = recipientData;
       } else if (recipientData && recipientData.type === 'ens') {
-        // Handle ENS domain recipients
-        apiPayload.recipient = {
-          type: 'ens',
-          address: recipientData.address,
-          domain: (recipientData as any).domain,
-          network: recipientData.network || '1'
+        // Handle ENS domain recipients - send as contactData so backend processes them like contacts
+        const ensData = recipientData as any; // Type assertion for ENS data
+        apiPayload.contactData = {
+          contacts: [{
+            type: 'ens',
+            name: ensData.domain,
+            address: ensData.address,
+            network: ensData.network || '1',
+            notes: `ENS Domain: ${ensData.domain}`
+          }]
         };
       }
       console.log('👍 apiPayload to sendChatMessage:', apiPayload);
@@ -1010,7 +1068,7 @@ export default function ChatScreen() {
           // Open the Transak widget with message ID for tracking
           if (reply.transakParams) {
             if (currentWalletAddress) {
-              reply.transakParams.walletAddress = currentWalletAddress;
+              reply.transakParams.walletAddress = getWalletAddressForNetwork(reply.network);
             }
             // Pass the message ID for transaction tracking
             handleBackendResponse(reply, aiMessage.id);
@@ -2115,6 +2173,36 @@ export default function ChatScreen() {
     }
   }, [handleOpenShareModal, refreshEnhancedTransactionData]);
 
+  // Function to intelligently select the correct wallet address based on network
+  const getWalletAddressForNetwork = (network?: string): string | undefined => {
+    if (!network) {
+      console.log('🔍 No network specified, using default wallet:', currentWalletAddress);
+      return currentWalletAddress;
+    }
+    
+    const normalizedNetwork = network.toLowerCase();
+    console.log('🔍 Selecting wallet for network:', normalizedNetwork);
+    console.log('🔍 Available wallets - EVM:', address || account?.address, 'Solana:', solanaAccount?.address);
+    
+    // For Solana network, prefer Solana wallet
+    if (normalizedNetwork === 'solana') {
+      const selectedWallet = solanaAccount?.address || currentWalletAddress;
+      console.log('🔍 Selected Solana wallet:', selectedWallet);
+      return selectedWallet;
+    }
+    
+    // For EVM networks (ethereum, polygon, arbitrum, optimism, base), prefer EVM wallet
+    if (['ethereum', 'polygon', 'arbitrum', 'optimism', 'base', 'bsc', '1'].includes(normalizedNetwork)) {
+      const selectedWallet = address || account?.address || currentWalletAddress;
+      console.log('🔍 Selected EVM wallet:', selectedWallet);
+      return selectedWallet;
+    }
+    
+    // Default fallback
+    console.log('🔍 Using default wallet:', currentWalletAddress);
+    return currentWalletAddress;
+  };
+
   return (
     <ThemedView style={styles.container}>
       {/* Confetti animation for new transactions */}
@@ -2303,6 +2391,10 @@ export default function ChatScreen() {
               {pendingUsernameRecipient.type === 'contact' ? (
                 <Text style={styles.confirmationChipText}>
                   Send to {pendingUsernameRecipient.name} ({pendingUsernameRecipient.address.slice(0, 6)}...{pendingUsernameRecipient.address.slice(-4)})
+                </Text>
+              ) : pendingUsernameRecipient.type === 'ens' ? (
+                <Text style={styles.confirmationChipText}>
+                  Send to {pendingUsernameRecipient.domain} ({pendingUsernameRecipient.address.slice(0, 6)}...{pendingUsernameRecipient.address.slice(-4)})
                 </Text>
               ) : (
                 <Text style={styles.confirmationChipText}>
@@ -2552,13 +2644,13 @@ export default function ChatScreen() {
               onPress={() => handleSelectUsernameSuggestion(s)}
             >
               <Ionicons
-                name={s.type === 'contact' ? 'person-circle' : 'at'}
+                name={s.type === 'contact' ? 'person-circle' : s.type === 'ens' ? 'globe' : 'at'}
                 size={22}
                 color={isDark ? '#6cf' : '#3a6cf6'}
                 style={{ marginRight: 10 }}
               />
               <Text style={{ fontWeight: '600', color: isDark ? '#fff' : '#222' }}>
-                {s.type === 'contact' ? s.name : `@${s.username}`}
+                {s.type === 'contact' ? s.name : s.type === 'ens' ? s.domain : `@${s.username}`}
               </Text>
               {s.address && (
                 <Text style={{ marginLeft: 8, color: isDark ? '#aaa' : '#666', fontSize: 13 }}>
@@ -2571,7 +2663,7 @@ export default function ChatScreen() {
                 </Text>
               )}
               <Text style={{ marginLeft: 8, color: isDark ? '#aaa' : '#666', fontSize: 12 }}>
-                {s.type === 'contact' ? 'Contact' : 'User'}
+                {s.type === 'contact' ? 'Contact' : s.type === 'ens' ? 'ENS' : 'User'}
               </Text>
             </TouchableOpacity>
           ))}
