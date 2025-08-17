@@ -1,0 +1,94 @@
+{
+  "expo": {
+    "name": "Bloqz",
+    "slug": "Bloqz",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/bloqz_logo.png",
+    "scheme": "bloqz",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/images/bloqz_logo.png",
+      "imageWidth": 200,
+      "resizeMode": "contain",
+      "backgroundColor": "#18122B"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "usesAppleSignIn": true,
+      "bundleIdentifier": "com.bloqz.app",
+      "associatedDomains": ["webcredentials:bloqz.io"],
+      "infoPlist": {
+        "NSCameraUsageDescription": "Camera access is needed for KYC verification",
+        "NSLocationWhenInUseUsageDescription": "Location access is needed for compliance",
+        "NSMicrophoneUsageDescription": "Microphone access may be needed for verification",
+        "NSPhotoLibraryUsageDescription": "Photo library access is needed for KYC verification",
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true
+        }
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/bloqz_logo.png",
+        "backgroundColor": "#18122B"
+      },
+      "package": "com.bloqz.app",
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.VIBRATE",
+        "android.permission.WAKE_LOCK"
+      ]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/bloqz_logo.png"
+    },
+    "extra": {
+      "privyAppId": "cmcfex9nf001djo0lgv58k201",
+      "privyClientId": "client-WY6N3NpReZaxo9J5me6nXNbW2H2MaDnaoUGcbBNQm2pUm",
+      "passkeyAssociatedDomain": "https://www.bloqz.io",
+      "eas": {
+        "projectId": "b389705a-6b30-4d15-a8ca-a3812fdbe356"
+      }
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-apple-authentication",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/bloqz_logo.png",
+          "color": "#18122B"
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "17.5"
+          },
+          "android": {
+            "compileSdkVersion": 35
+          }
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/bloqz_logo.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#18122B"
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
