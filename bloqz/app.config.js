@@ -60,10 +60,7 @@ export default {
       eas: {
         projectId: "b389705a-6b30-4d-a3812fdbe356"
       }
-      // You can switch between:
-      // - "http://192.168.1.96:5001" (for physical device)
-      // - "http://localhost:5001" (for simulator)
-      // - "https://your-production-domain.com" (for production)
+
     },
     plugins: [
       "expo-router",
